@@ -240,7 +240,7 @@ if __name__ == "__main__":
     parser.add_argument('--pred', type=str, required=True, help='Path to predicted results folder')
     parser.add_argument('--out', type=str, default='', help='Path to save JSON output (as directory)')
     parser.add_argument('--metrics', type=str, default='psnr,ssim,clipiqa',
-                        help='Comma-separated list of metrics: psnr,ssim,clipiqa,lpips,...')
+                        help='Comma-separated list of metrics: psnr,ssim,clipiqa,lpips,musiq,niqe')
     parser.add_argument('--batch_mode', action='store_true', help='Use batch mode for metrics computation')
     parser.add_argument('--crop', type=int, default=0, help='Crop border size for PSNR/SSIM')
     parser.add_argument('--test_y_channel', action='store_true', help='Use Y channel for PSNR/SSIM')

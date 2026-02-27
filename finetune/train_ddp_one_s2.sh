@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export WANDB_LOG_MEDIA="mp4"
 # Prevent tokenizer parallelism issues
 export TOKENIZERS_PARALLELISM=false
 
@@ -18,17 +19,17 @@ MODEL_ARGS=(
 
 # Output Configuration
 OUTPUT_ARGS=(
-    --output_dir "checkpoint/DOVE-s2"
+    --output_dir "checkpoint/DOVE-s2-1"
     --report_to "wandb"
 )
 
 # Data Configuration
 DATA_ARGS=(
     --data_root "../datasets/train"
-    --video_column "../datasets/train/HQ-VSR.txt"
+    --video_column "../datasets/train/HQ-VSR-800.txt"
     --image_data_root "../datasets/train"
     --image_column "../datasets/train/DIV2K_train_HR.txt"
-    --train_resolution "2x320x640"  # (frames x height x width), frames should be 8N+1
+    --train_resolution "1x320x640"  # (frames x height x width), frames should be 8N+1
     # --crop_mode "resize_random_crop"
     --image_ratio 0.8
 )
@@ -38,9 +39,10 @@ TRAIN_ARGS=(
     --train_epochs 10 # number of training epochs
     --train_steps 500
     --seed 42 # random seed
-    --batch_size 2
-    --gradient_accumulation_steps 1
+    --batch_size 1
+    --gradient_accumulation_steps 4
     --mixed_precision "bf16"  # ["no", "fp16"] # Only CogVideoX-2B supports fp16 training
+    # --mixed_precision "fp16"
     --learning_rate 5e-6
     --gradient_checkpointing true
     --max_grad_norm 0.1
@@ -65,10 +67,10 @@ CHECKPOINT_ARGS=(
 # Validation Configuration
 VALIDATION_ARGS=(
     --do_validation true  # ["true", "false"]
-    --validation_dir "data/VideoSR/test/UDM10"
+    --validation_dir "../datasets/test/UDM10"
     --validation_steps 100  # should be multiple of checkpointing_steps
-    --validation_videos "video_real_v0.txt"
-    --validation_ref_videos "video.txt"
+    --validation_videos "LQ-Video.txt"
+    --validation_ref_videos "GT-Video.txt"
     # --validation_prompts "prompts.txt"
     --gen_fps 8
     --raw_test true

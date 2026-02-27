@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export WANDB_LOG_MEDIA="mp4"
 # Prevent tokenizer parallelism issues
 export TOKENIZERS_PARALLELISM=false
 
 # Model Configuration
 MODEL_ARGS=(
-    --model_path "THUDM/CogVideoX1.5-5B"
+    --model_path "/data2/wujialing/pretrain/Image-to-Video/CogVideoX1.5-5B"
+    # --model_path "/data2/wujialing/pretrain/Image-to-Video/CogVideoX-2b"
     --model_name "dove-s1"
     --model_type "real-sr"
     --training_type "sft"
@@ -34,9 +36,10 @@ TRAIN_ARGS=(
     --train_epochs 1000 # number of training epochs
     --train_steps 10000
     --seed 42 # random seed
-    --batch_size 2
-    --gradient_accumulation_steps 1
+    --batch_size 1      # 从 2 改为 1
+    --gradient_accumulation_steps 4     # 增加梯度累计步数
     --mixed_precision "bf16"  # ["no", "fp16"] # Only CogVideoX-2B supports fp16 training
+    # --mixed_precision "fp16" 
     --learning_rate 2e-5
     --gradient_checkpointing true
     --max_grad_norm 0.1
@@ -55,7 +58,7 @@ SYSTEM_ARGS=(
 CHECKPOINT_ARGS=(
     --checkpointing_steps 1000 # save checkpoint every x steps
     --checkpointing_limit 3 # maximum number of checkpoints to keep, after which the oldest one is deleted
-    # --resume_from_checkpoint "/absolute/path/to/checkpoint_dir"  # if you want to resume from a checkpoint, otherwise, comment this line
+    --resume_from_checkpoint checkpoint/DOVE-s1/checkpoint-9000 # if you want to resume from a checkpoint, otherwise, comment this line
 )
 
 # Validation Configuration

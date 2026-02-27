@@ -33,8 +33,8 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from finetune.constants import LOG_LEVEL, LOG_NAME
-from finetune.datasets import RealSRDataset, RealSRImageVideoDataset
-from finetune.datasets.utils import (
+from finetune.datasets_local import RealSRDataset, RealSRImageVideoDataset
+from finetune.datasets_local.utils import (
     load_images,
     load_prompts,
     load_videos,
@@ -447,6 +447,8 @@ class Trainer:
             self.args.train_steps = self.args.train_epochs * num_update_steps_per_epoch
         # Afterwards we recalculate our number of training epochs
         self.args.train_epochs = math.ceil(self.args.train_steps / num_update_steps_per_epoch)
+        # # （取两者的最大值，确保容器足够大）：
+        # self.args.train_epochs = max(self.args.train_epochs, math.ceil(self.args.train_steps / num_update_steps_per_epoch))
         self.state.num_update_steps_per_epoch = num_update_steps_per_epoch
 
     def prepare_for_validation(self):
@@ -807,7 +809,7 @@ class Trainer:
                 elif artifact_type == "video":
                     logger.debug(f"Saving video to {filename}")
                     export_to_video(artifact_value, filename, fps=self.args.gen_fps)
-                    artifact_value = wandb.Video(filename, caption=prompt)
+                    artifact_value = wandb.Video(filename, caption=prompt, format='mp4')
 
                 all_processes_artifacts.append(artifact_value)
 

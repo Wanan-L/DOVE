@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from diffusers import (
     CogVideoXDPMScheduler,
+    CogVideoXDDIMScheduler,
     CogVideoXPipeline,
 )
 
@@ -26,6 +27,8 @@ from pathlib import Path
 import pyiqa
 import imageio.v3 as iio
 import glob
+from monitor import Timer, print_monitor_stats
+from thop import profile
 
 # Must import after torch because this can sometimes lead to a nasty segmentation fault, or stack smashing error
 # Very few bug reports but it happens. Look in decord Github issues for more relevant information.
@@ -458,7 +461,7 @@ def process_video(
     
     timesteps = torch.full(
         (batch_size,),
-        fill_value=sr_noise_step,
+        fill_value=sr_noise_step,   # sr_noise_step = 399
         dtype=torch.long,
         device=latent.device,
     )
@@ -536,7 +539,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--is_cpu_offload", action="store_true", help="Enable CPU offload for the model")
 
-    parser.add_argument("--is_vae_st", action="store_true", help="Enable VAE slicing and tiling")
+    parser.add_argument("--is_vae_st", action="store_true", help="Enable VAE slicing and tiling")   # 启用 VAE 切片和分块
 
     parser.add_argument("--png_save", action="store_true", help="Save output as PNG sequence")
 
@@ -573,6 +576,9 @@ if __name__ == "__main__":
     else:
         overlap_hw = (0, 0)
     
+    # 初始化计时器
+    timer = Timer()
+
     # Set seed
     set_seed(args.seed)
 
@@ -641,9 +647,13 @@ if __name__ == "__main__":
         pipe.to("cuda")
     
     if args.is_vae_st:
-        pipe.vae.enable_slicing()
-        pipe.vae.enable_tiling()
+        pipe.vae.enable_slicing()   # 将 VAE 编码/解码的批次处理改为逐帧处理，减少内存占用
+        pipe.vae.enable_tiling()    # 将大的特征图分割成小块处理，避免大张量导致的 OOM
     
+    # ---【监控点 1】：模型加载完毕 ---
+    print_monitor_stats("阶段: 模型加载完成", None, None, timer)
+    torch.cuda.reset_peak_memory_stats()
+
     # pipe.transformer.eval()
     # torch.set_grad_enabled(False)
 
@@ -660,14 +670,37 @@ if __name__ == "__main__":
     else:
         metrics_models = None
         metric_accumulator = None
+
+    print("正在进行 GPU 预热...")
+    with torch.no_grad():           
+        # 构造一个极小的输入进行一次前向传播
+        dummy_latent = torch.randn(1, 16, 4, 32, 32).to(pipe.device, dtype=dtype)
+        # 模拟一次 transformer 前向或简单的 process_video 调用
+        # 这里为了简单，可以直接跑一次循环中的第一个视频但不计数
+        pass
+
+    # ---【监控点 2】：开始处理视频 ---
+    print_monitor_stats(f"阶段: 开始处理视频", None, None, timer)
+    timer.checkpoint()      # 重置时间，排除模型加载和 Metric 初始化耗时
+    torch.cuda.reset_peak_memory_stats()
     
+    # 初始化总帧数计数器
+    total_processed_frames = 0
+
     for video_path in tqdm(video_files, desc="Processing videos"):
         video_name = os.path.basename(video_path)
         prompt = video_prompt_dict.get(video_name, "")
+        # ---【监控点 3】：开始处理单个视频 ---
+        # print_monitor_stats(f"开始处理视频: {video_name}", None, None, timer)
+        # torch.cuda.reset_peak_memory_stats()
         if os.path.exists(video_path):
             # Read video
             # [F, C, H, W]
             video, pad_f, pad_h, pad_w, original_shape = preprocess_video_match(video_path, is_match=True)
+
+            # 累加当前视频的原始帧数
+            total_processed_frames += original_shape[0]
+
             H_, W_ = video.shape[2], video.shape[3]
             video = torch.nn.functional.interpolate(video, size=(H_*args.upscale, W_*args.upscale), mode=args.upscale_mode, align_corners=False)
             __frame_transform = transforms.Compose(
@@ -749,8 +782,15 @@ if __name__ == "__main__":
             else:
                 output_path = output_path.replace('.mkv', '.mp4')
                 save_video_with_imageio(video_generate, output_path, fps=args.fps, format=args.save_format)
+            
+            # print_monitor_stats(f"完成处理视频: {video_name}", 1, None, timer)  # batch_size=1 因为每次处理一个视频
+            # torch.cuda.reset_peak_memory_stats()
         else:
             print(f"Warning: {video_name} not found in {args.input_dir}")
+    
+    # ---【监控点 4】：视频处理完成 ---
+    print_monitor_stats("阶段: 所有视频处理完成", batch_size=total_processed_frames, timer=timer)
+    torch.cuda.reset_peak_memory_stats()
 
     if metrics_models is not None:
         print("\n=== Overall Average Metrics ===")
